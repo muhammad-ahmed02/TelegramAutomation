@@ -1,11 +1,9 @@
 import google.generativeai as genai
 from selenium import webdriver
-from selenium.webdriver import ActionChains
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 import time
 import os
-import pyperclip
 
 # Load the environment variables
 from dotenv import load_dotenv
@@ -15,7 +13,7 @@ load_dotenv()
 class TelegramAutomation():
     def __init__(self):
         # Initialize the WebDriver using webdriver-manager
-        options = webdriver.ChromeOptions()
+        options = webdriver.FirefoxOptions()
         options.add_argument('--ignore-ssl-errors=yes')
         options.add_argument('--ignore-certificate-errors')
 
@@ -31,23 +29,26 @@ class TelegramAutomation():
         self.driver.get('https://web.telegram.org')
 
         # Wait for the user to manually log in
-        print("Please log in to Telegram Web manually within 60 seconds.")
-        time.sleep(30)
-        print("30 seconds remaining...")
-        time.sleep(30)
+        # print("Please log in to Telegram Web manually within 60 seconds.")
+        # time.sleep(30)
+        # print("30 seconds remaining...")
+        # time.sleep(30)
 
         # Check if the login was successful
-        try:
+        while True:
             print("Checking if login was successful...")
-            _ = self.driver.find_element(By.CLASS_NAME, "input-search-input")
-            print("Login successful!")
-        except Exception as e:
-            print("Login failed because: ", str(e))
-            self.close()
+            try:
+                _ = self.driver.find_element(
+                    By.TAG_NAME, "input")
+                print("Login successful!")
+                time.sleep(5)
+                break
+            except Exception:
+                time.sleep(2)
 
-    def go_to_source_group(self, url):
+    def go_to_source_group(self):
         # Now you can proceed to source group
-        self.go_to_group(url)
+        self.go_to_group(os.getenv("SOURCE_GROUP_URL"))
 
         # checking for new message
         while True:
@@ -84,7 +85,6 @@ class TelegramAutomation():
         # first trim the date from message
         msg = self.message
         msg = msg.rsplit("\n", 2)[0]
-        print("Trimmed message:", msg)
 
         # now try with GEMINI API else send as it is
         try:
@@ -92,9 +92,9 @@ class TelegramAutomation():
             model = genai.GenerativeModel(model_name='gemini-1.5-flash')
             response = model.generate_content(
                 f"""Please paraphrase this message, do make sure to use emojis
-                but less and dont change the coin name: {msg}""")
+                but less and dont change the coin name also remove
+                the yearly word: {msg}""")
             resp = response.text
-            print(resp)
             return resp
         except Exception as e:
             print("GEMINI API didn't work because:", str(e))
@@ -102,14 +102,13 @@ class TelegramAutomation():
             return msg
 
     def send_message(self, message):
-        pyperclip.copy(message)
-        act = ActionChains(self.driver)
-        act.key_down(Keys.CONTROL).send_keys(
-            "v").key_up(Keys.CONTROL).perform()
-        # message_box = self.driver.find_element(
-        #     By.CLASS_NAME, "input-message-input")
-        # message_box.send_keys(message)
-        # message_box.send_keys(Keys.RETURN)
+        self.driver.refresh()
+        time.sleep(5)
+        self.go_to_group(os.getenv("TARGET_GROUP_URL"))
+        message_box = self.driver.find_element(
+            By.CLASS_NAME, "input-message-input")
+        message_box.send_keys(message)
+        message_box.send_keys(Keys.RETURN)
 
     def close(self):
         print("Closing the browser in 5 seconds...")
@@ -122,15 +121,15 @@ if __name__ == "__main__":
     bot = TelegramAutomation()
     try:
         # 1. Login
-        cond = bot.login()
-        # 2. Go to the source group
-        bot.go_to_source_group(os.getenv('SOURCE_GROUP_URL'))
-        formatted_message = bot.format_message()
-        bot.go_to_group(os.getenv("TARGET_GROUP_URL"))
-        print("Sending the message:", formatted_message)
-        bot.send_message(formatted_message)
-        print("Message sent successfully!")
-        bot.close()
+        bot.login()
+        while True:
+            # 2. Go to the source group
+            bot.go_to_source_group()
+            formatted_message = bot.format_message()
+            print("Sending the message:", formatted_message)
+            bot.send_message(formatted_message)
+            print("Message sent successfully!")
+
     except Exception as e:
         print("An error occurred:", str(e))
         bot.close()
