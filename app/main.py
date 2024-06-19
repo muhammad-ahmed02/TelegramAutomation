@@ -5,7 +5,6 @@ from selenium.webdriver.common.keys import Keys
 import time
 import re
 import os
-import requests
 
 # Load the environment variables
 from dotenv import load_dotenv
