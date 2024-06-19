@@ -3,7 +3,9 @@ from selenium import webdriver
 from selenium.webdriver.common.by import By
 from selenium.webdriver.common.keys import Keys
 import time
+import re
 import os
+import requests
 
 # Load the environment variables
 from dotenv import load_dotenv
@@ -57,13 +59,54 @@ class TelegramAutomation():
             if messages:
                 last_message = messages[-1].text
                 print("Last message:", last_message)
-                if self.check_for_new_meessage(last_message):
+                time_regex = r"^([0-9]{2}):([0-9]{2})$"
+                match = re.search(time_regex, last_message)
+
+                if match:
+                    print("Image found!...")
+                    # self.download_image()
+                elif last_message.startswith("GIF"):
+                    print("GIF found!...")
+                    # self.download_image()
+                elif self.check_for_new_meessage(last_message):
                     if "facebook" not in last_message.lower():
                         self.message = last_message
                         print("New message found!", last_message)
-                    break
+                        break
             print("Waiting for 10 seconds to check for new messages...")
             time.sleep(10)
+
+    def download_image(self):
+        images = self.driver.find_elements(By.CLASS_NAME, "media-photo")
+
+        if images:
+            image_url = images[-1].get_attribute("src")
+
+            script = """
+                var blob_url = arguments[0];
+                var xhr = new XMLHttpRequest();
+                xhr.open('GET', blob_url, true);
+                xhr.responseType = 'blob';
+                xhr.onload = function(e) {
+                    if (this.status == 200) {
+                        var blob = this.response;
+                        var reader = new FileReader();
+                        reader.onload = function(event) {
+                            var base64Data = event.target.result.split(',')[1];
+                            document.body.innerHTML = '<a id="blobdata" href="data:image/jpeg;base64,' + base64Data + '" download="image.jpg"></a>';
+                            document.getElementById('blobdata').click();
+                        };
+                        reader.readAsDataURL(blob);
+                    }
+                };
+                xhr.send();
+            """
+
+            self.driver.execute_script(script, image_url)
+
+            print("Image downloaded successfully!")
+        else:
+            print("No GIF found.")
 
     def check_for_new_meessage(self, msg):
         if msg != self.message:
@@ -84,16 +127,21 @@ class TelegramAutomation():
         """
         # first trim the date from message
         msg = self.message
-        msg = msg.rsplit("\n", 2)[0]
+        if msg:
+            msg = msg.rsplit("\n", 1)[0]
+        else:
+            return "No message found!"
 
         # now try with GEMINI API else send as it is
         try:
             genai.configure(api_key=os.getenv('API_KEY'))
             model = genai.GenerativeModel(model_name='gemini-1.5-flash')
             response = model.generate_content(
-                f"""Please paraphrase this message, do make sure to use emojis
-                but less and dont change the coin name also remove
-                the yearly word: {msg}""")
+                f"""Please paraphrase this message,
+                do make sure to use emojis but less,
+                remove all names and dates in message
+                but keep the bitnode same and
+                lastly dont use yearly word too: {msg}""")
             resp = response.text
             return resp
         except Exception as e:
